@@ -6,8 +6,24 @@
   },
   "nativeDependencies": {
     "android": {
-      "gradle": "androidx.browser:browser:1.8.0"
+      "gradle": ["androidx.browser:browser:1.8.0"]
     }
+  },
+  "android": {
+    "manifestEntries": [
+      {
+        "type": "activity",
+        "name": ".BrowserAuthActivity",
+        "exported": true,
+        "intentFilters": [
+          {
+            "action": "android.intent.action.VIEW",
+            "categories": ["android.intent.category.DEFAULT", "android.intent.category.BROWSABLE"],
+            "data": { "scheme": "wefter" }
+          }
+        ]
+      }
+    ]
   },
   "methods": ["open", "close", "auth"],
   "hooks": [],

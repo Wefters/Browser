@@ -146,7 +146,7 @@ class BrowserPlugin(context: Context, dispatcher: BridgeDispatcher) :
             reject(
                     callback,
                     "UNSUPPORTED_REDIRECT_SCHEME",
-                    "redirectUri must use the \"$AUTH_REDIRECT_SCHEME://\" scheme so Android can route the OAuth callback back into the app, e.g. $AUTH_REDIRECT_SCHEME://callback. This also requires an <activity>/<intent-filter> entry in AndroidManifest.xml — see this plugin's README."
+                    "redirectUri must use the \"$AUTH_REDIRECT_SCHEME://\" scheme so Android can route the OAuth callback back into the app, e.g. $AUTH_REDIRECT_SCHEME://callback."
             )
             return
         }
