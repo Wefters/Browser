@@ -1,0 +1,15 @@
+{
+  "name": "browser",
+  "permissions": {
+    "android": [],
+    "ios": {}
+  },
+  "nativeDependencies": {
+    "android": {
+      "gradle": "androidx.browser:browser:1.8.0"
+    }
+  },
+  "methods": ["open", "close", "auth"],
+  "hooks": [],
+  "events": ["browser:opened", "browser:closed", "browser:authCompleted"]
+}
