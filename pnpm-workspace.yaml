@@ -1,4 +1,4 @@
 allowBuilds:
-  esbuild: set this to true or false
+  esbuild: true
 minimumReleaseAgeExclude:
   - '@wefterjs/core@0.0.1'
