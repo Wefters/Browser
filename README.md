@@ -1,134 +1,117 @@
 # @wefterjs/browser
 
-Official Wefter plugin for opening in-app web browsers using Android Custom Tabs and iOS `SFSafariViewController`.
-
----
+Official Wefter plugin for opening in-app web browsers using Android Custom Tabs and iOS SFSafariViewController, including OAuth authentication flows.
 
 ## Features
 
-- 🌐 **In-App Web Browsing**: Opens external web URLs inside high-performance native Custom Tabs / Safari view controllers without leaving the app.
-- 🔐 **OAuth / Web Auth**: Native deep-linking support for OAuth2 authentication flows.
-- 🎨 **Theme & Toolbar Control**: Custom toolbar tint colors matching your brand design system.
-- 📡 **Lifecycle Events**: Real-time event listeners for `opened`, `closed`, and `authCompleted` events.
+- Display web pages inside the app without redirecting the user to an external browser application.
+- Configurable display modes: in-app web view overlay or external browser handoff.
+- Customizable toolbar visibility, navigation controls, and share buttons.
+- Dedicated OAuth flow handler with redirect URI interception and callback parameter extraction.
+- Lifecycle event hooks for browser open, close, and authentication completion events.
 
----
+## Installation and setup
 
-## Installation & Setup
-
-1. Add the plugin to your Wefter project:
+Install the plugin package in your Wefter application:
 
 ```bash
 wefter add @wefterjs/browser
-```
-
-2. Synchronize native projects:
-
-```bash
 wefter sync
 ```
 
----
+### Native configuration
 
-## JavaScript API Reference
+When synchronized:
 
-Import `invokeNative` and `registerHook` from `@wefterjs/core`:
+- Android includes the `androidx.browser:browser:1.8.0` dependency and automatically registers `BrowserAuthActivity` with an intent filter for custom redirect handling.
+- iOS uses `SFSafariViewController` and `ASWebAuthenticationSession`.
+
+## JavaScript API reference
+
+Import `Browser` from `@wefterjs/browser`:
 
 ```ts
-import { invokeNative, registerHook } from "@wefterjs/core";
+import { Browser } from "@wefterjs/browser";
 ```
 
-### 1. `open(options)`
-
-Opens an in-app browser overlay.
+### Open an in-app browser
 
 ```ts
-interface OpenBrowserOptions {
-  url: string; // The URL to open
-  toolbarColor?: string; // Hex color for the navigation toolbar (e.g., "#4f46e5")
-  windowName?: string; // Target window target (default: "_blank")
-}
-
-await invokeNative("browser", "open", {
+await Browser.open({
   url: "https://wefter.dev",
-  toolbarColor: "#0f172a",
+  mode: "webview",            // "webview" (in-app tab) or "external" (system browser)
+  title: "Documentation",
+  showToolbar: true,
+  showNavigationButtons: true,
+  shareButton: true,
+  desktopMode: false,
 });
 ```
 
-### 2. `close()`
-
-Programmatically closes the active in-app browser window.
+### Close the active browser
 
 ```ts
-await invokeNative("browser", "close");
+await Browser.close();
 ```
 
-### 3. `auth(options)`
+### OAuth authentication flows
 
-Initiates an in-app OAuth authentication flow. Automatically intercepts custom redirect schemes.
+To run an OAuth2 login flow:
 
 ```ts
-interface AuthOptions {
-  url: string; // OAuth login URL
-  redirectScheme: string; // Custom app scheme (e.g. "myapp")
-}
-
-interface AuthResult {
-  url: string; // Full callback URL containing query parameters or authorization code
-}
-
-const authResult = await invokeNative<AuthResult>("browser", "auth", {
-  url: "https://auth.example.com/login?response_type=code&client_id=123",
-  redirectScheme: "myapp",
+// 1. Listen for authentication completion
+const authSub = Browser.onAuthCompleted(({ callbackUrl, params }) => {
+  console.log("Full callback URL:", callbackUrl);
+  console.log("Extracted code:", params.code);
+  authSub.remove();
 });
 
-console.log("Returned OAuth URL:", authResult.url);
+// 2. Start authentication session
+await Browser.auth({
+  url: "https://auth.example.com/oauth/authorize?client_id=123&response_type=code",
+  redirectUri: "wefter://auth/callback",
+  ephemeral: true, // Use private session without shared cookies
+});
 ```
 
----
-
-## Event Subscriptions
-
-Listen to browser lifecycle changes using `registerHook`:
+### Event listeners
 
 ```ts
-import { registerHook } from "@wefterjs/core";
-
-// Listen to browser opened event
-const openSub = registerHook("browser:opened", () => {
-  console.log("In-app browser opened");
+// Browser opened event
+const openSub = Browser.onOpened(({ url, mode }) => {
+  console.log("Browser opened:", url, mode);
 });
 
-// Listen to browser closed event
-const closeSub = registerHook("browser:closed", () => {
-  console.log("In-app browser closed by user");
+// Browser closed by user or programmatically
+const closeSub = Browser.onClosed(({ reason }) => {
+  console.log("Browser closed:", reason);
 });
 
-// Clean up listener when done
+// Clean up listeners when needed
+openSub.remove();
 closeSub.remove();
 ```
 
----
+## Platform events
 
-## Complete Usage Example
+| Event | Payload | Platforms |
+| --- | --- | --- |
+| `browser:opened` | `{ url: string, mode: "webview" \| "external", id?: string }` | Android, iOS |
+| `browser:closed` | `{ reason: string, id?: string }` | Android, iOS |
+| `browser:authCompleted` | `{ callbackUrl: string, params: Record<string, string>, id?: string }` | Android, iOS |
 
-```ts
-import { invokeNative, registerHook } from "@wefterjs/core";
+## Platform implementation notes
 
-export async function loginWithOAuth() {
-  const sub = registerHook("browser:closed", () => {
-    console.log("User dismissed login modal");
-  });
+### Android
 
-  try {
-    const result = await invokeNative<{ url: string }>("browser", "auth", {
-      url: "https://github.com/login/oauth/authorize?client_id=YOUR_CLIENT_ID",
-      redirectScheme: "wefter",
-    });
+- Uses `androidx.browser.customtabs.CustomTabsIntent` for in-app web views.
+- OAuth flows route through `BrowserAuthActivity` to intercept redirect intent callbacks.
 
-    const code = new URL(result.url).searchParams.get("code");
-    console.log("Authorization Code:", code);
-  } finally {
-    sub.remove();
-  }
-}
-```
+### iOS
+
+- Uses `SFSafariViewController` for standard web browsing.
+- Uses `ASWebAuthenticationSession` when `Browser.auth` is called, ensuring secure token exchange and private session isolation when `ephemeral: true` is configured.
+
+## License
+
+[MIT](LICENSE) © 2026 Sandip Ghimire
