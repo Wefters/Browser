@@ -1,0 +1,42 @@
+name: Feature request
+description: Suggest an enhancement or new capability for @wefterjs/browser.
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for proposing an improvement to @wefterjs/browser.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or motivation
+      description: What problem does this feature solve, or what use case does it enable?
+      placeholder: Describe the motivation for this enhancement.
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution and API design
+      description: Describe your proposed method additions, parameter options, or interface design.
+      placeholder: Include example TypeScript signatures or usage snippets.
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform support
+      description: Which platforms require this feature?
+      options:
+        - "Both Android and iOS"
+        - "Android only"
+        - "iOS only"
+    validations:
+      required: true
+  - type: textarea
+    id: native
+    attributes:
+      label: Native implementation notes
+      description: If known, mention relevant Android APIs (Kotlin) or iOS frameworks (Swift).
+      placeholder: "e.g. Relevant system APIs or framework classes"

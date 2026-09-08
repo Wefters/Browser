@@ -1,0 +1,80 @@
+name: Bug report
+description: Report a bug or native failure in @wefterjs/browser.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting an issue with @wefterjs/browser. Please search existing issues before submitting.
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Target platform
+      description: Select the platform where the issue occurs.
+      options:
+        - "Both Android and iOS"
+        - "Android only"
+        - "iOS only"
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Device model and OS version
+      description: Specify the hardware or simulator model and operating system version.
+      placeholder: "e.g. Pixel 8 (Android 14) / iPhone 15 (iOS 17.4) / Android Emulator API 34"
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug description
+      description: Explain the problem and unexpected behavior.
+      placeholder: Describe what went wrong and how it departs from expected behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: code
+    attributes:
+      label: Code example
+      description: Provide the JavaScript or TypeScript code calling the plugin.
+      render: typescript
+      value: |
+        import { Browser } from "@wefterjs/browser";
+
+        await Browser.open({ url: "https://wefter.dev", mode: "webview" });
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Provide numbered steps to reproduce the issue.
+      placeholder: |
+        1. Initialize plugin
+        2. Trigger call
+        3. Observe failure
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What did you expect to happen?
+      placeholder: Describe the expected outcome.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Native logs or console stack traces
+      description: Paste any error messages, logcat output, or Xcode console logs.
+      render: shell
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Verification
+      options:
+        - label: I searched existing issues and verified this has not been reported already.
+          required: true

@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Plugin Documentation
+    url: https://wefter.dev/plugin
+    about: Read documentation and authoring guides for Wefter plugins.
+  - name: Discord Community
+    url: https://discord.gg/wefter
+    about: Discuss plugin development and get help in the Wefter Discord.
