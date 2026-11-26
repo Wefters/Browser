@@ -37,8 +37,8 @@ export interface CloseResult {
 
 /**
  * A sign-in flow: the page to open and the redirect URI that ends it. On Android the redirect URI must use
- * the `wefter://` scheme (for example `wefter://callback`). `ephemeral` (iOS) uses a private session
- * without shared cookies.
+ * the app's own redirect scheme, which {@link Browser.getRedirectUri} builds. `ephemeral` (iOS) uses a
+ * private session without shared cookies.
  */
 export interface AuthOptions {
   url: string;
@@ -75,20 +75,43 @@ export interface BrowserAuthCompletedEvent {
   id?: string;
 }
 
+/** The app's sign-in redirect scheme. */
+export interface RedirectSchemeResult {
+  scheme: string;
+}
+
+/** Native methods of the plugin. */
+const native = definePlugin<{
+  /** Opens a URL. */
+  open: (options: OpenOptions) => Promise<OpenResult>;
+  /** Closes the in-app browser. */
+  close: (options?: CloseOptions) => Promise<CloseResult>;
+  /**
+   * Starts a sign-in flow in a secure browser session (`ASWebAuthenticationSession` on iOS, a Custom Tab on
+   * Android). Listen with `Browser.onAuthCompleted` and `Browser.onClosed` for the result.
+   */
+  auth: (options: AuthOptions) => Promise<AuthResult>;
+  /**
+   * The app's sign-in redirect scheme: its app id plus `.auth` (for example `com.example.shop.auth`).
+   * Development and production builds have different app ids, so each has its own scheme.
+   */
+  getRedirectScheme: () => Promise<RedirectSchemeResult>;
+}>("browser", { open: true, close: true, auth: true, getRedirectScheme: true });
+
 /** The Browser plugin. */
 export const Browser = {
-  ...definePlugin<{
-    /** Opens a URL. */
-    open: (options: OpenOptions) => Promise<OpenResult>;
-    /** Closes the in-app browser. */
-    close: (options?: CloseOptions) => Promise<CloseResult>;
-    /**
-     * Starts a sign-in flow in a secure browser session (`ASWebAuthenticationSession` on iOS, a Custom Tab
-     * on
-     * Android). Listen with `Browser.onAuthCompleted` and `Browser.onClosed` for the result.
-     */
-    auth: (options: AuthOptions) => Promise<AuthResult>;
-  }>("browser", { open: true, close: true, auth: true }),
+  ...native,
+
+  /**
+   * A redirect URI for {@link Browser.auth} on the app's own scheme, such as
+   * `com.example.shop.auth://callback`. Register it with the sign-in provider for each build.
+   *
+   * @param path What follows the scheme; `callback` by default.
+   */
+  async getRedirectUri(path = "callback"): Promise<string> {
+    const { scheme } = await native.getRedirectScheme();
+    return `${scheme}://${path.replace(/^\/+/, "")}`;
+  },
 
   /**
    * Calls `callback` when a browser opens.

@@ -23,7 +23,7 @@ wefter sync
 
 When synchronized:
 
-- Android includes the `androidx.browser:browser:1.8.0` dependency and automatically registers `BrowserAuthActivity` with an intent filter for custom redirect handling.
+- Android includes the `androidx.browser:browser:1.8.0` dependency and automatically registers `BrowserAuthActivity` for the app's sign-in redirect scheme, `<app id>.auth`.
 - iOS uses `SFSafariViewController` and `ASWebAuthenticationSession`.
 
 ## JavaScript API reference
@@ -69,10 +69,12 @@ const authSub = Browser.onAuthCompleted(({ callbackUrl, params }) => {
 // 2. Start authentication session
 await Browser.auth({
   url: "https://auth.example.com/oauth/authorize?client_id=123&response_type=code",
-  redirectUri: "wefter://auth/callback",
+  redirectUri: await Browser.getRedirectUri(), // e.g. com.example.shop.auth://callback
   ephemeral: true, // Use private session without shared cookies
 });
 ```
+
+The redirect URI uses the app's own scheme: its app id plus `.auth`. Development and production builds have different app ids, so register both redirect URIs with your sign-in provider. On Android the app id must be lower case without underscores to work as a scheme.
 
 ### Event listeners
 

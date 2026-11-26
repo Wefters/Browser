@@ -71,7 +71,7 @@ describe("Browser.auth", () => {
         expect(method).toBe("auth");
         expect(payload).toEqual({
           url: "https://provider.example.com/authorize",
-          redirectUri: "wefter://callback",
+          redirectUri: "dev.wefter.demo.auth://callback",
         });
         return { started: true };
       },
@@ -79,10 +79,19 @@ describe("Browser.auth", () => {
 
     const result = await Browser.auth({
       url: "https://provider.example.com/authorize",
-      redirectUri: "wefter://callback",
+      redirectUri: "dev.wefter.demo.auth://callback",
     });
 
     expect(result).toEqual({ started: true });
+  });
+});
+
+describe("Browser.getRedirectUri", () => {
+  it("builds the redirect URI from the app's scheme", async () => {
+    installMockBridge({ browser: () => ({ scheme: "dev.wefter.demo.auth" }) });
+
+    expect(await Browser.getRedirectUri()).toBe("dev.wefter.demo.auth://callback");
+    expect(await Browser.getRedirectUri("/oauth/done")).toBe("dev.wefter.demo.auth://oauth/done");
   });
 });
 
@@ -119,10 +128,10 @@ describe("events", () => {
 
     window.__wefterNative.emit(
       "browser:authCompleted",
-      JSON.stringify({ callbackUrl: "wefter://callback?code=abc", params: { code: "abc" } }),
+      JSON.stringify({ callbackUrl: "dev.wefter.demo.auth://callback?code=abc", params: { code: "abc" } }),
     );
 
-    expect(received).toEqual({ callbackUrl: "wefter://callback?code=abc", params: { code: "abc" } });
+    expect(received).toEqual({ callbackUrl: "dev.wefter.demo.auth://callback?code=abc", params: { code: "abc" } });
     subscription.remove();
   });
 });

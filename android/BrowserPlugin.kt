@@ -135,11 +135,19 @@ class BrowserPlugin(context: Context, dispatcher: BridgeDispatcher) :
     }
 
     /**
-     * Starts a sign-in flow in a Custom Tab that ends when the page redirects to `redirectUri`. On Android
-     * the
-     * redirect URI must use the `wefter://` scheme, which `BrowserAuthActivity` is registered for. The
-     * outcome
-     * is emitted as `browser:authCompleted` or `browser:closed`.
+     * The scheme sign-in redirect URIs must use on Android: the app id plus `.auth` (for example
+     * `com.example.shop.auth`), which `BrowserAuthActivity` is registered for. Each build flavor has its own
+     * app id, so development and production builds never receive each other's redirects.
+     */
+    @WefterMethod
+    fun getRedirectScheme(payload: JSONObject, callback: (Result<Any>) -> Unit) {
+        resolve(callback, JSONObject().put("scheme", authRedirectScheme()))
+    }
+
+    /**
+     * Starts a sign-in flow in a Custom Tab that ends when the page redirects to `redirectUri`, which must
+     * use the scheme from [getRedirectScheme]. The outcome is emitted as `browser:authCompleted` or
+     * `browser:closed`.
      */
     @WefterMethod
     fun auth(payload: JSONObject, callback: (Result<Any>) -> Unit) {
@@ -159,11 +167,20 @@ class BrowserPlugin(context: Context, dispatcher: BridgeDispatcher) :
             )
             return
         }
-        if (scheme != AUTH_REDIRECT_SCHEME) {
+        val expectedScheme = authRedirectScheme()
+        if (!VALID_SCHEME.matches(expectedScheme)) {
+            reject(
+                    callback,
+                    "UNSUPPORTED_APP_ID",
+                    "The app id \"${context.packageName}\" cannot be used as a URL scheme. Sign-in redirects need an app id in lower case without underscores."
+            )
+            return
+        }
+        if (scheme != expectedScheme) {
             reject(
                     callback,
                     "UNSUPPORTED_REDIRECT_SCHEME",
-                    "redirectUri must use the \"$AUTH_REDIRECT_SCHEME://\" scheme so Android can route the OAuth callback back into the app, e.g. $AUTH_REDIRECT_SCHEME://callback."
+                    "redirectUri must use the \"$expectedScheme://\" scheme so Android can route the sign-in redirect back into the app, e.g. $expectedScheme://callback. Browser.getRedirectUri() builds it for you."
             )
             return
         }
@@ -185,6 +202,9 @@ class BrowserPlugin(context: Context, dispatcher: BridgeDispatcher) :
 
         resolve(callback, JSONObject().put("started", true))
     }
+
+    /** The app id plus `.auth`, matching the `${applicationId}.auth` scheme in `plugin.json`. */
+    private fun authRedirectScheme(): String = "${context.packageName}.auth"
 
     /** Hands the URL to the system browser. */
     private fun openExternal(url: String, id: String?, callback: (Result<Any>) -> Unit) {
@@ -662,8 +682,8 @@ class BrowserPlugin(context: Context, dispatcher: BridgeDispatcher) :
     companion object {
         private const val TAG = "BrowserPlugin"
         private const val VALID_MODES = "webview, external"
-        /** Scheme sign-in redirect URIs must use on Android. */
-        const val AUTH_REDIRECT_SCHEME = "wefter"
+        /** A URL scheme that browsers pass through unchanged: lower case, starting with a letter. */
+        private val VALID_SCHEME = Regex("^[a-z][a-z0-9+.-]*$")
 
         @Volatile private var instance: BrowserPlugin? = null
 
@@ -730,6 +750,10 @@ private fun drawMoreIcon(canvas: Canvas, cx: Float, cy: Float, r: Float, color: 
 /**
  * Runs a sign-in flow. It opens the authorise URL in a Custom Tab and receives the redirect back to the app
  * as a new intent. Returning to it without a redirect means the user closed the tab.
+ *
+ * It is `singleTask` (set in `plugin.json`), so the redirect reaches this instance through [onNewIntent] and
+ * Android closes the Custom Tab above it. A redirect that finds no running flow (for example after the
+ * process was killed) starts a fresh instance with no authorise URL, which simply finishes.
  */
 class BrowserAuthActivity : FragmentActivity() {
 

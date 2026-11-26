@@ -15,17 +15,18 @@
         "type": "activity",
         "name": ".BrowserAuthActivity",
         "exported": true,
+        "launchMode": "singleTask",
         "intentFilters": [
           {
             "action": "android.intent.action.VIEW",
             "categories": ["android.intent.category.DEFAULT", "android.intent.category.BROWSABLE"],
-            "data": { "scheme": "wefter" }
+            "data": { "scheme": "${applicationId}.auth" }
           }
         ]
       }
     ]
   },
-  "methods": ["open", "close", "auth"],
+  "methods": ["open", "close", "auth", "getRedirectScheme"],
   "hooks": [],
   "events": ["browser:opened", "browser:closed", "browser:authCompleted"]
 }

@@ -85,6 +85,13 @@ final class BrowserPlugin: WefterPlugin {
         resolve(callback, data: ["closed": true])
     }
 
+    /// The bundle id plus `.auth` (for example `com.example.shop.auth`), the same scheme Android uses for
+    /// sign-in redirects. iOS accepts any scheme, but using this one keeps a single redirect URI for both.
+    // @WefterMethod
+    func getRedirectScheme(payload: [String: Any], callback: @escaping (Result<Any, Error>) -> Void) throws {
+        resolve(callback, data: ["scheme": "\(Bundle.main.bundleIdentifier ?? "app").auth"])
+    }
+
     /// Starts a sign-in flow that ends when the page redirects to `redirectUri`. The outcome is emitted as
     /// `browser:authCompleted` or `browser:closed`.
     // @WefterMethod
