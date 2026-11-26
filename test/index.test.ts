@@ -93,10 +93,7 @@ describe("events", () => {
       received = data;
     });
 
-    window.__wefterNative.emit(
-      "browser:opened",
-      JSON.stringify({ url: "https://example.com", mode: "webview" }),
-    );
+    window.__wefterNative.emit("browser:opened", JSON.stringify({ url: "https://example.com", mode: "webview" }));
 
     expect(received).toEqual({ url: "https://example.com", mode: "webview" });
     subscription.remove();

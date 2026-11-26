@@ -4,7 +4,13 @@
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "files": ["dist", "plugin.json", "android", "ios", "README.md"],
+  "files": [
+    "dist",
+    "plugin.json",
+    "android",
+    "ios",
+    "README.md"
+  ],
   "publishConfig": {
     "access": "public"
   },

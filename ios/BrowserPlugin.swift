@@ -2,6 +2,8 @@ import AuthenticationServices
 import UIKit
 import WebKit
 
+/// Opens pages in an in-app browser (`BrowserViewController`) or Safari, and runs sign-in flows with
+/// `ASWebAuthenticationSession`. Only one in-app browser or sign-in flow is open at a time.
 final class BrowserPlugin: WefterPlugin {
 
     private static let validModes: Set<String> = ["webview", "external"]
@@ -12,6 +14,8 @@ final class BrowserPlugin: WefterPlugin {
     private var pendingAuthCancelReason: String?
     private let authContextProvider = AuthContextProvider()
 
+    /// Opens `url` in the in-app browser, or in Safari with `mode: "external"`. The result only says it
+    /// started; `browser:opened` and `browser:closed` follow.
     // @WefterMethod
     func open(payload: [String: Any], callback: @escaping (Result<Any, Error>) -> Void) throws {
         guard let url = payload["url"] as? String, !url.isEmpty else {
@@ -57,6 +61,7 @@ final class BrowserPlugin: WefterPlugin {
         resolve(callback, data: ["started": true])
     }
 
+    /// Closes the sign-in flow or in-app browser with the given `id`, or whichever is open without one.
     // @WefterMethod
     func close(payload: [String: Any], callback: @escaping (Result<Any, Error>) -> Void) throws {
         let id = payload["id"] as? String
@@ -80,6 +85,8 @@ final class BrowserPlugin: WefterPlugin {
         resolve(callback, data: ["closed": true])
     }
 
+    /// Starts a sign-in flow that ends when the page redirects to `redirectUri`. The outcome is emitted as
+    /// `browser:authCompleted` or `browser:closed`.
     // @WefterMethod
     func auth(payload: [String: Any], callback: @escaping (Result<Any, Error>) -> Void) throws {
         guard let urlString = payload["url"] as? String, !urlString.isEmpty,
@@ -105,6 +112,7 @@ final class BrowserPlugin: WefterPlugin {
         resolve(callback, data: ["started": true])
     }
 
+    /// Hands the URL to Safari.
     private func openExternal(url: String, id: String?, callback: @escaping (Result<Any, Error>) -> Void) {
         guard let parsedUrl = URL(string: url) else {
             reject(callback, code: "INVALID_URL", message: "Could not parse URL: \(url)")
@@ -125,6 +133,7 @@ final class BrowserPlugin: WefterPlugin {
         resolve(callback, data: ["started": true])
     }
 
+    /// Presents the in-app browser full screen from the key window's root view controller.
     private func present(url: String, title: String?, showToolbar: Bool, showNavigationButtons: Bool, shareButton: Bool, desktopMode: Bool, id: String?) {
         let rootViewController = UIApplication.shared.connectedScenes
             .compactMap { $0 as? UIWindowScene }
@@ -163,12 +172,14 @@ final class BrowserPlugin: WefterPlugin {
         presenter.present(controller, animated: true)
     }
 
+    /// Cancels the running sign-in flow, reporting `reason` as the close reason.
     private func cancelActiveAuthSession(reason: String) {
         guard activeAuthSession != nil else { return }
         pendingAuthCancelReason = reason
         activeAuthSession?.cancel()
     }
 
+    /// Starts the `ASWebAuthenticationSession` and reports its result.
     private func presentAuth(url: URL, callbackScheme: String, ephemeral: Bool, id: String?) {
         cancelActiveAuthSession(reason: "replaced")
 
@@ -211,24 +222,29 @@ final class BrowserPlugin: WefterPlugin {
         session.start()
     }
 
+    /// Emits `browser:opened`.
     private func dispatchOpened(url: String, mode: String, id: String?) {
         var payload: [String: Any] = ["url": url, "mode": mode]
         if let id = id { payload["id"] = id }
         emit("browser:opened", payload)
     }
 
+    /// Emits `browser:closed`.
     private func dispatchClosed(reason: String, id: String?) {
         var payload: [String: Any] = ["reason": reason]
         if let id = id { payload["id"] = id }
         emit("browser:closed", payload)
     }
 
+    /// Emits `browser:authCompleted`.
     private func dispatchAuthCompleted(callbackUrl: String, params: [String: String], id: String?) {
         var payload: [String: Any] = ["callbackUrl": callbackUrl, "params": params]
         if let id = id { payload["id"] = id }
         emit("browser:authCompleted", payload)
     }
 
+    /// Query and fragment parameters of a callback URL (fragment values win), as used by OAuth implicit and
+    /// code flows.
     private static func parseCallbackParams(_ url: URL) -> [String: String] {
         var result: [String: String] = [:]
 
@@ -250,6 +266,7 @@ final class BrowserPlugin: WefterPlugin {
     }
 }
 
+/// Presents sign-in sessions over the app's key window.
 private final class AuthContextProvider: NSObject, ASWebAuthenticationPresentationContextProviding {
     func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
         UIApplication.shared.connectedScenes
@@ -259,6 +276,8 @@ private final class AuthContextProvider: NSObject, ASWebAuthenticationPresentati
     }
 }
 
+/// The in-app browser: a web view under a header with the page title and host, a back or close button, a
+/// progress bar, and a menu with share, copy link and open in Safari.
 final class BrowserViewController: UIViewController, WKNavigationDelegate {
 
     private static let headerHeight: CGFloat = 52
@@ -284,6 +303,7 @@ final class BrowserViewController: UIViewController, WKNavigationDelegate {
     private var openedFired = false
     private var progressObservation: NSKeyValueObservation?
 
+    /// Creates the browser for `url`. `id` is echoed back in events.
     init(url: String, title: String?, showToolbar: Bool, showNavigationButtons: Bool, shareButton: Bool, desktopMode: Bool, id: String?) {
         self.pageUrl = url
         self.titleOverride = title
@@ -314,6 +334,7 @@ final class BrowserViewController: UIViewController, WKNavigationDelegate {
         webView.load(URLRequest(url: url))
     }
 
+    /// Creates the web view, with a desktop user agent when `desktopMode` is set.
     private func setUpWebView() {
         let configuration = WKWebViewConfiguration()
         webView = WKWebView(frame: .zero, configuration: configuration)
@@ -335,6 +356,7 @@ final class BrowserViewController: UIViewController, WKNavigationDelegate {
         }
     }
 
+    /// Places the web view below the header (or full screen without a toolbar).
     private func layoutWebView() {
         NSLayoutConstraint.activate([
             webView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
@@ -344,6 +366,7 @@ final class BrowserViewController: UIViewController, WKNavigationDelegate {
         ])
     }
 
+    /// Builds the header: back or close button, title and host, overflow menu and progress bar.
     private func setUpToolbar() {
         let bar = UIView()
         bar.backgroundColor = .systemBackground
@@ -436,11 +459,13 @@ final class BrowserViewController: UIViewController, WKNavigationDelegate {
         ])
     }
 
+    /// Applies the header button style.
     private func styleIconButton(_ button: UIButton) {
         button.tintColor = .label
         button.translatesAutoresizingMaskIntoConstraints = false
     }
 
+    /// The overflow menu: share (when enabled), copy link and open in Safari.
     private func makeOverflowMenu() -> UIMenu {
         var actions: [UIAction] = [
             UIAction(title: "Open in Safari", image: UIImage(systemName: "safari")) { [weak self] _ in
@@ -465,15 +490,18 @@ final class BrowserViewController: UIViewController, WKNavigationDelegate {
         return UIMenu(title: "", children: actions)
     }
 
+    /// Opens the current page in Safari.
     private func openInExternalBrowser() {
         guard let url = webView.url ?? URL(string: pageUrl) else { return }
         UIApplication.shared.open(url, options: [:], completionHandler: nil)
     }
 
+    /// Copies the current page's URL.
     private func copyLink() {
         UIPasteboard.general.string = webView.url?.absoluteString ?? pageUrl
     }
 
+    /// Goes back in the page history, or closes the browser when there is nothing to go back to.
     @objc private func backOrCloseTapped() {
         if showNavigationButtons, webView.canGoBack {
             webView.goBack()
@@ -482,6 +510,7 @@ final class BrowserViewController: UIViewController, WKNavigationDelegate {
         }
     }
 
+    /// Shares the current page's URL.
     @objc private func shareTapped() {
         let shareUrl = webView.url?.absoluteString ?? pageUrl
         guard let url = URL(string: shareUrl) else { return }
@@ -489,6 +518,7 @@ final class BrowserViewController: UIViewController, WKNavigationDelegate {
         present(activityController, animated: true)
     }
 
+    /// Updates the title and reports the browser as opened after the first page loads.
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         titleLabel?.text = webView.title?.isEmpty == false ? webView.title : (URL(string: pageUrl)?.host ?? pageUrl)
 
@@ -506,6 +536,7 @@ final class BrowserViewController: UIViewController, WKNavigationDelegate {
         NSLog("%@", "[BrowserPlugin] WebView load error: \(error.localizedDescription)")
     }
 
+    /// Dismisses the browser once and reports why it closed.
     func finish(reason: String) {
         guard !finished else { return }
         finished = true

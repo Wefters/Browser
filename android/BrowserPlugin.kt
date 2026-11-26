@@ -37,9 +37,14 @@ import androidx.core.view.updatePadding
 import androidx.fragment.app.FragmentActivity
 import org.json.JSONObject
 
+/** The string at [key], or `null` when it is missing or `null`. */
 private fun JSONObject.optNullableString(key: String): String? =
         if (has(key) && !isNull(key)) getString(key) else null
 
+/**
+ * Opens pages in an in-app browser overlay or the system browser, and runs sign-in flows in a Custom Tab
+ * through `BrowserAuthActivity`. Only one in-app browser or sign-in flow is open at a time.
+ */
 class BrowserPlugin(context: Context, dispatcher: BridgeDispatcher) :
         WefterPlugin(context, dispatcher) {
 
@@ -52,6 +57,10 @@ class BrowserPlugin(context: Context, dispatcher: BridgeDispatcher) :
         instance = this
     }
 
+    /**
+     * Opens `url` in the in-app browser, or in the system browser with `mode: "external"`. The result only
+     * says it started; `browser:opened` and `browser:closed` follow.
+     */
     @WefterMethod
     fun open(payload: JSONObject, callback: (Result<Any>) -> Unit) {
         val url = payload.optString("url", "")
@@ -103,6 +112,7 @@ class BrowserPlugin(context: Context, dispatcher: BridgeDispatcher) :
         resolve(callback, JSONObject().put("started", true))
     }
 
+    /** Closes the sign-in flow or in-app browser with the given `id`, or whichever is open without one. */
     @WefterMethod
     fun close(payload: JSONObject, callback: (Result<Any>) -> Unit) {
         val id = payload.optNullableString("id")
@@ -124,6 +134,13 @@ class BrowserPlugin(context: Context, dispatcher: BridgeDispatcher) :
         resolve(callback, JSONObject().put("closed", true))
     }
 
+    /**
+     * Starts a sign-in flow in a Custom Tab that ends when the page redirects to `redirectUri`. On Android
+     * the
+     * redirect URI must use the `wefter://` scheme, which `BrowserAuthActivity` is registered for. The
+     * outcome
+     * is emitted as `browser:authCompleted` or `browser:closed`.
+     */
     @WefterMethod
     fun auth(payload: JSONObject, callback: (Result<Any>) -> Unit) {
         val url = payload.optString("url", "")
@@ -169,6 +186,7 @@ class BrowserPlugin(context: Context, dispatcher: BridgeDispatcher) :
         resolve(callback, JSONObject().put("started", true))
     }
 
+    /** Hands the URL to the system browser. */
     private fun openExternal(url: String, id: String?, callback: (Result<Any>) -> Unit) {
         val uri =
                 try {
@@ -201,18 +219,21 @@ class BrowserPlugin(context: Context, dispatcher: BridgeDispatcher) :
         resolve(callback, JSONObject().put("started", true))
     }
 
+    /** Emits `browser:opened`. */
     internal fun dispatchOpened(url: String, mode: String, id: String?) {
         val payload = JSONObject().put("url", url).put("mode", mode)
         if (id != null) payload.put("id", id)
         emit("browser:opened", payload)
     }
 
+    /** Emits `browser:closed`. */
     internal fun dispatchClosed(reason: String, id: String?) {
         val payload = JSONObject().put("reason", reason)
         if (id != null) payload.put("id", id)
         emit("browser:closed", payload)
     }
 
+    /** Emits `browser:authCompleted`. */
     internal fun dispatchAuthCompleted(
             callbackUrl: String,
             params: Map<String, String>,
@@ -223,6 +244,7 @@ class BrowserPlugin(context: Context, dispatcher: BridgeDispatcher) :
         emit("browser:authCompleted", payload)
     }
 
+    /** Header colours for light or dark mode. */
     private class BrowserTheme(isDark: Boolean) {
         val headerBackground = if (isDark) Color.parseColor("#1C1C1E") else Color.WHITE
         val contentBackground = if (isDark) Color.parseColor("#000000") else Color.WHITE
@@ -233,6 +255,7 @@ class BrowserPlugin(context: Context, dispatcher: BridgeDispatcher) :
         val lightStatusBarIcons = isDark
     }
 
+    /** A round header button that draws its icon on a canvas. */
     private class IconButtonView(
             context: Context,
             var tint: Int,
@@ -264,6 +287,12 @@ class BrowserPlugin(context: Context, dispatcher: BridgeDispatcher) :
         }
     }
 
+    /**
+     * The in-app browser: a full-screen view over the app's content with a web view, a header with title,
+     * host
+     * and back or close button, a progress bar, and a menu with share, copy link and open in browser. The
+     * system back button goes back in the page history before closing.
+     */
     private inner class BrowserOverlay(
             private val url: String,
             private val titleOverride: String?,
@@ -307,6 +336,7 @@ class BrowserPlugin(context: Context, dispatcher: BridgeDispatcher) :
             }
         }
 
+        /** Adds the overlay to the activity and loads the page. */
         fun show() {
             val isDark =
                     (activity.resources.configuration.uiMode and
@@ -431,6 +461,7 @@ class BrowserPlugin(context: Context, dispatcher: BridgeDispatcher) :
             webView.loadUrl(url)
         }
 
+        /** Builds the header bar. */
         private fun buildHeader(height: Int, theme: BrowserTheme): View {
             val bar =
                     FrameLayout(activity).apply {
@@ -548,6 +579,7 @@ class BrowserPlugin(context: Context, dispatcher: BridgeDispatcher) :
             return bar
         }
 
+        /** Shows the menu with share (when enabled), copy link and open in browser. */
         private fun showOverflowMenu(anchor: View) {
             val popup = PopupMenu(activity, anchor)
             popup.menu.add(0, 1, 0, "Open in Chrome")
@@ -566,6 +598,7 @@ class BrowserPlugin(context: Context, dispatcher: BridgeDispatcher) :
             popup.show()
         }
 
+        /** Opens the current page in the system browser. */
         private fun openInExternalBrowser() {
             val link = webView?.url ?: url
             try {
@@ -575,6 +608,7 @@ class BrowserPlugin(context: Context, dispatcher: BridgeDispatcher) :
             }
         }
 
+        /** Copies the current page's URL. */
         private fun copyLinkToClipboard() {
             val link = webView?.url ?: url
             val clipboard = activity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -584,6 +618,7 @@ class BrowserPlugin(context: Context, dispatcher: BridgeDispatcher) :
             }
         }
 
+        /** Shares the current page's URL. */
         private fun shareCurrentUrl() {
             val shareUrl = webView?.url ?: url
             val intent =
@@ -598,6 +633,7 @@ class BrowserPlugin(context: Context, dispatcher: BridgeDispatcher) :
             }
         }
 
+        /** Removes the overlay once, restores the status bar and reports why it closed. */
         fun finish(reason: String) {
             if (!finished.compareAndSet(false, true)) {
                 return
@@ -626,14 +662,17 @@ class BrowserPlugin(context: Context, dispatcher: BridgeDispatcher) :
     companion object {
         private const val TAG = "BrowserPlugin"
         private const val VALID_MODES = "webview, external"
+        /** Scheme sign-in redirect URIs must use on Android. */
         const val AUTH_REDIRECT_SCHEME = "wefter"
 
         @Volatile private var instance: BrowserPlugin? = null
 
+        /** The live plugin, used by `BrowserAuthActivity` to report results. */
         internal fun current(): BrowserPlugin? = instance
     }
 }
 
+/** Draws a back arrow centred at ([cx], [cy]). */
 private fun drawBackIcon(canvas: Canvas, cx: Float, cy: Float, r: Float, color: Int) {
     val paint =
             Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -674,6 +713,7 @@ private fun drawBackIcon(canvas: Canvas, cx: Float, cy: Float, r: Float, color: 
     canvas.drawPath(path, paint)
 }
 
+/** Draws a vertical three-dot icon centred at ([cx], [cy]). */
 private fun drawMoreIcon(canvas: Canvas, cx: Float, cy: Float, r: Float, color: Int) {
     val paint =
             Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -687,6 +727,10 @@ private fun drawMoreIcon(canvas: Canvas, cx: Float, cy: Float, r: Float, color: 
     canvas.drawCircle(cx, cy + spacing, dotRadius, paint)
 }
 
+/**
+ * Runs a sign-in flow. It opens the authorise URL in a Custom Tab and receives the redirect back to the app
+ * as a new intent. Returning to it without a redirect means the user closed the tab.
+ */
 class BrowserAuthActivity : FragmentActivity() {
 
     companion object {
@@ -706,6 +750,7 @@ class BrowserAuthActivity : FragmentActivity() {
     private var redirectReceived = false
     private var finished = false
 
+    /** Opens the authorise URL in a Custom Tab. */
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -729,6 +774,7 @@ class BrowserAuthActivity : FragmentActivity() {
         }
     }
 
+    /** Receives the redirect and completes the flow with its parameters. */
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
@@ -741,6 +787,7 @@ class BrowserAuthActivity : FragmentActivity() {
         completeWithSuccess(callbackUrl, parseCallbackParams(uri))
     }
 
+    /** Treats coming back without a redirect (after the first resume) as a cancellation. */
     override fun onResume() {
         super.onResume()
 
@@ -754,22 +801,26 @@ class BrowserAuthActivity : FragmentActivity() {
         }
     }
 
+    /** Ends the flow because the app closed or replaced it. */
     fun cancelFromApp(reason: String) {
         completeWithClosed(reason)
     }
 
+    /** Reports the callback URL and its parameters, then finishes. */
     private fun completeWithSuccess(callbackUrl: String, params: Map<String, String>) {
         if (!markFinished()) return
         BrowserPlugin.current()?.dispatchAuthCompleted(callbackUrl, params, sessionId)
         finish()
     }
 
+    /** Reports why the flow closed, then finishes. */
     private fun completeWithClosed(reason: String) {
         if (!markFinished()) return
         BrowserPlugin.current()?.dispatchClosed(reason, sessionId)
         finish()
     }
 
+    /** Marks the flow finished. Returns `false` if it already was, so results are reported once. */
     private fun markFinished(): Boolean {
         if (finished) return false
         finished = true
@@ -777,6 +828,7 @@ class BrowserAuthActivity : FragmentActivity() {
         return true
     }
 
+    /** Query and fragment parameters of a callback URL (fragment values win). */
     private fun parseCallbackParams(uri: Uri): Map<String, String> {
         val result = mutableMapOf<String, String>()
 

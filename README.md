@@ -39,7 +39,7 @@ import { Browser } from "@wefterjs/browser";
 ```ts
 await Browser.open({
   url: "https://wefter.dev",
-  mode: "webview",            // "webview" (in-app tab) or "external" (system browser)
+  mode: "webview", // "webview" (in-app tab) or "external" (system browser)
   title: "Documentation",
   showToolbar: true,
   showNavigationButtons: true,
@@ -94,10 +94,10 @@ closeSub.remove();
 
 ## Platform events
 
-| Event | Payload | Platforms |
-| --- | --- | --- |
-| `browser:opened` | `{ url: string, mode: "webview" \| "external", id?: string }` | Android, iOS |
-| `browser:closed` | `{ reason: string, id?: string }` | Android, iOS |
+| Event                   | Payload                                                                | Platforms    |
+| ----------------------- | ---------------------------------------------------------------------- | ------------ |
+| `browser:opened`        | `{ url: string, mode: "webview" \| "external", id?: string }`          | Android, iOS |
+| `browser:closed`        | `{ reason: string, id?: string }`                                      | Android, iOS |
 | `browser:authCompleted` | `{ callbackUrl: string, params: Record<string, string>, id?: string }` | Android, iOS |
 
 ## Platform implementation notes
