@@ -1,12 +1,18 @@
 import AuthenticationServices
+import SafariServices
 import UIKit
 import WebKit
 
-/// Opens pages in an in-app browser (`BrowserViewController`) or Safari, and runs sign-in flows with
+/// Opens pages in Safari's in-app view (`SFSafariViewController`, the default), in Safari, or in the
+/// plugin's own web view (`mode: "webview"`, deprecated), and runs sign-in flows with
 /// `ASWebAuthenticationSession`. Only one in-app browser or sign-in flow is open at a time.
 final class BrowserPlugin: WefterPlugin {
 
-    private static let validModes: Set<String> = ["webview", "external"]
+    private static let validModes: Set<String> = ["inApp", "webview", "external"]
+
+    private weak var activeSafari: SFSafariViewController?
+    private var activeSafariId: String?
+    private lazy var safariDelegate = SafariDelegate { [weak self] in self?.safariDidFinish() }
 
     private weak var activeController: BrowserViewController?
     private var activeAuthSession: ASWebAuthenticationSession?
@@ -14,8 +20,9 @@ final class BrowserPlugin: WefterPlugin {
     private var pendingAuthCancelReason: String?
     private let authContextProvider = AuthContextProvider()
 
-    /// Opens `url` in the in-app browser, or in Safari with `mode: "external"`. The result only says it
-    /// started; `browser:opened` and `browser:closed` follow.
+    /// Opens `url` in Safari's in-app view (the default), in Safari with `mode: "external"`, or in the
+    /// plugin's own web view with `mode: "webview"` (deprecated; use `openWebWindow()` from `@wefterjs/core`).
+    /// The result only says it started; `browser:opened` and `browser:closed` follow.
     // @WefterMethod
     func open(payload: [String: Any], callback: @escaping (Result<Any, Error>) -> Void) throws {
         guard let url = payload["url"] as? String, !url.isEmpty else {
@@ -23,7 +30,7 @@ final class BrowserPlugin: WefterPlugin {
             return
         }
 
-        let mode = payload["mode"] as? String ?? "webview"
+        let mode = payload["mode"] as? String ?? "inApp"
         guard BrowserPlugin.validModes.contains(mode) else {
             reject(
                 callback,
@@ -37,6 +44,18 @@ final class BrowserPlugin: WefterPlugin {
 
         if mode == "external" {
             openExternal(url: url, id: id, callback: callback)
+            return
+        }
+        if mode == "inApp" {
+            guard let parsed = URL(string: url), ["http", "https"].contains(parsed.scheme?.lowercased() ?? "") else {
+                reject(callback, code: "INVALID_URL", message: "Only http and https pages open in the in-app browser: \(url)")
+                return
+            }
+            let toolbarColor = (payload["toolbarColor"] as? String).flatMap(Self.color(hex:))
+            DispatchQueue.main.async { [weak self] in
+                self?.presentSafari(url: parsed, toolbarColor: toolbarColor, id: id)
+            }
+            resolve(callback, data: ["started": true])
             return
         }
 
@@ -69,6 +88,17 @@ final class BrowserPlugin: WefterPlugin {
         if activeAuthSession != nil, id == nil || activeAuthSessionId == id {
             DispatchQueue.main.async { [weak self] in
                 self?.cancelActiveAuthSession(reason: "closed_by_app")
+            }
+            resolve(callback, data: ["closed": true])
+            return
+        }
+
+        if let safari = activeSafari, id == nil || activeSafariId == id {
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                self.activeSafari = nil
+                safari.dismiss(animated: true)
+                self.dispatchClosed(reason: "closed_by_app", id: self.activeSafariId)
             }
             resolve(callback, data: ["closed": true])
             return
@@ -117,6 +147,60 @@ final class BrowserPlugin: WefterPlugin {
         }
 
         resolve(callback, data: ["started": true])
+    }
+
+    /// Shows `url` in `SFSafariViewController`, with the user's Safari sign-ins, passwords and warnings.
+    private func presentSafari(url: URL, toolbarColor: UIColor?, id: String?) {
+        activeController?.finish(reason: "replaced")
+        cancelActiveAuthSession(reason: "replaced")
+        if let open = activeSafari {
+            let previousId = activeSafariId
+            activeSafari = nil
+            open.dismiss(animated: false)
+            dispatchClosed(reason: "replaced", id: previousId)
+        }
+        let safari = SFSafariViewController(url: url)
+        safari.delegate = safariDelegate
+        safari.dismissButtonStyle = .close
+        if let toolbarColor { safari.preferredBarTintColor = toolbarColor }
+        guard let presenter = topViewController() else {
+            dispatchClosed(reason: "no_root_view_controller", id: id)
+            return
+        }
+        activeSafari = safari
+        activeSafariId = id
+        presenter.present(safari, animated: true) { [weak self] in
+            self?.dispatchOpened(url: url.absoluteString, mode: "inApp", id: id)
+        }
+    }
+
+    /// The user closed Safari's view.
+    private func safariDidFinish() {
+        guard activeSafari != nil else { return }
+        activeSafari = nil
+        dispatchClosed(reason: "user", id: activeSafariId)
+    }
+
+    /// The view controller to present from: the key window's, above anything it already presents.
+    private func topViewController() -> UIViewController? {
+        var top = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap { $0.windows }
+            .first(where: { $0.isKeyWindow })?.rootViewController
+        while let presented = top?.presentedViewController { top = presented }
+        return top
+    }
+
+    /// A colour from `#RRGGBB`.
+    private static func color(hex: String) -> UIColor? {
+        let digits = hex.hasPrefix("#") ? String(hex.dropFirst()) : hex
+        guard digits.count == 6, let value = Int(digits, radix: 16) else { return nil }
+        return UIColor(
+            red: CGFloat((value >> 16) & 0xFF) / 255,
+            green: CGFloat((value >> 8) & 0xFF) / 255,
+            blue: CGFloat(value & 0xFF) / 255,
+            alpha: 1
+        )
     }
 
     /// Hands the URL to Safari.
@@ -555,4 +639,11 @@ final class BrowserViewController: UIViewController, WKNavigationDelegate {
 
         onClosed?(reason)
     }
+}
+
+/// Tells the plugin when the user closes Safari's in-app view.
+private final class SafariDelegate: NSObject, SFSafariViewControllerDelegate {
+    private let onFinish: () -> Void
+    init(onFinish: @escaping () -> Void) { self.onFinish = onFinish }
+    func safariViewControllerDidFinish(_ controller: SFSafariViewController) { onFinish() }
 }
