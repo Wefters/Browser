@@ -29,6 +29,8 @@ import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
+import androidx.browser.customtabs.CustomTabColorSchemeParams
+import androidx.browser.customtabs.CustomTabsClient
 import androidx.browser.customtabs.CustomTabsIntent
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
@@ -57,9 +59,19 @@ class BrowserPlugin(context: Context, dispatcher: BridgeDispatcher) :
         instance = this
     }
 
+    /** A Custom Tab opened by [open]: closed once the app comes back to the front. */
+    private class OpenTab(val id: String?) {
+        var paused = false
+        var closeReason = "user"
+    }
+
+    @Volatile private var openTab: OpenTab? = null
+
     /**
-     * Opens `url` in the in-app browser, or in the system browser with `mode: "external"`. The result only
-     * says it started; `browser:opened` and `browser:closed` follow.
+     * Opens `url` in the system browser's in-app view (Custom Tabs, the default), in the browser app with
+     * `mode: "external"`, or in the plugin's own web view with `mode: "webview"` (deprecated; use
+     * `openWebWindow()` from `@wefterjs/core`). The result only says it started; `browser:opened` and
+     * `browser:closed` follow.
      */
     @WefterMethod
     fun open(payload: JSONObject, callback: (Result<Any>) -> Unit) {
@@ -69,8 +81,8 @@ class BrowserPlugin(context: Context, dispatcher: BridgeDispatcher) :
             return
         }
 
-        val mode = payload.optString("mode", "webview")
-        if (mode != "webview" && mode != "external") {
+        val mode = payload.optString("mode", "inApp")
+        if (mode != "inApp" && mode != "webview" && mode != "external") {
             reject(
                     callback,
                     "INVALID_MODE",
@@ -83,6 +95,10 @@ class BrowserPlugin(context: Context, dispatcher: BridgeDispatcher) :
 
         if (mode == "external") {
             openExternal(url, id, callback)
+            return
+        }
+        if (mode == "inApp") {
+            openInApp(url, id, payload.optNullableString("toolbarColor"), payload.optBoolean("shareButton", true), callback)
             return
         }
 
@@ -120,6 +136,20 @@ class BrowserPlugin(context: Context, dispatcher: BridgeDispatcher) :
         val authSession = BrowserAuthActivity.activeInstance
         if (authSession != null && (id == null || authSession.sessionId == id)) {
             activity.runOnUiThread { authSession.cancelFromApp("closed_by_app") }
+            resolve(callback, JSONObject().put("closed", true))
+            return
+        }
+
+        val tab = openTab
+        if (tab != null && (id == null || tab.id == id)) {
+            tab.closeReason = "closed_by_app"
+            activity.runOnUiThread {
+                // Bringing the app's screen back to the front closes the Custom Tab above it.
+                activity.startActivity(
+                        Intent(activity, activity.javaClass)
+                                .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                )
+            }
             resolve(callback, JSONObject().put("closed", true))
             return
         }
@@ -205,6 +235,68 @@ class BrowserPlugin(context: Context, dispatcher: BridgeDispatcher) :
 
     /** The app id plus `.auth`, matching the `${applicationId}.auth` scheme in `plugin.json`. */
     private fun authRedirectScheme(): String = "${context.packageName}.auth"
+
+    /**
+     * Opens [url] in a Custom Tab of the user's browser, with its own sign-ins, saved passwords and
+     * security warnings. Falls back to the browser app when no browser supports Custom Tabs.
+     */
+    private fun openInApp(
+            url: String,
+            id: String?,
+            toolbarColor: String?,
+            shareButton: Boolean,
+            callback: (Result<Any>) -> Unit
+    ) {
+        val uri = Uri.parse(url)
+        if (uri.scheme != "http" && uri.scheme != "https") {
+            reject(callback, "INVALID_URL", "Only http and https pages open in the in-app browser: $url")
+            return
+        }
+        val browserPackage = CustomTabsClient.getPackageName(activity, null)
+        if (browserPackage == null) {
+            openExternal(url, id, callback)
+            return
+        }
+        val builder =
+                CustomTabsIntent.Builder()
+                        .setShowTitle(true)
+                        .setShareState(
+                                if (shareButton) CustomTabsIntent.SHARE_STATE_ON else CustomTabsIntent.SHARE_STATE_OFF
+                        )
+        toolbarColor?.let { color ->
+            runCatching { Color.parseColor(color) }.getOrNull()?.let {
+                builder.setDefaultColorSchemeParams(CustomTabColorSchemeParams.Builder().setToolbarColor(it).build())
+            }
+        }
+        val customTab = builder.build()
+        customTab.intent.setPackage(browserPackage)
+        activity.runOnUiThread {
+            activeOverlay?.finish(reason = "replaced")
+            BrowserAuthActivity.activeInstance?.cancelFromApp("replaced")
+            openTab?.let { dispatchClosed("replaced", it.id) }
+            try {
+                customTab.launchUrl(activity, uri)
+                openTab = OpenTab(id)
+                dispatchOpened(url, "inApp", id)
+                resolve(callback, JSONObject().put("started", true))
+            } catch (e: ActivityNotFoundException) {
+                openExternal(url, id, callback)
+            }
+        }
+    }
+
+    /** The app's screen went to the background: an open Custom Tab is now on screen. */
+    override fun onPause() {
+        openTab?.paused = true
+    }
+
+    /** The app's screen is back in front: the Custom Tab above it closed. */
+    override fun onResume() {
+        val tab = openTab ?: return
+        if (!tab.paused) return
+        openTab = null
+        dispatchClosed(tab.closeReason, tab.id)
+    }
 
     /** Hands the URL to the system browser. */
     private fun openExternal(url: String, id: String?, callback: (Result<Any>) -> Unit) {
@@ -681,7 +773,7 @@ class BrowserPlugin(context: Context, dispatcher: BridgeDispatcher) :
 
     companion object {
         private const val TAG = "BrowserPlugin"
-        private const val VALID_MODES = "webview, external"
+        private const val VALID_MODES = "inApp, external, webview"
         /** A URL scheme that browsers pass through unchanged: lower case, starting with a letter. */
         private val VALID_SCHEME = Regex("^[a-z][a-z0-9+.-]*$")
 

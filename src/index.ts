@@ -5,18 +5,34 @@
 
 import { definePlugin, registerHook } from "@wefterjs/core";
 
-/** `webview` opens an in-app browser; `external` hands the URL to the system browser. */
-export type BrowserMode = "webview" | "external";
+/**
+ * How to open a page:
+ *
+ * - `inApp` (the default): the system browser's in-app view, Custom Tabs on Android and Safari's view on
+ *   iOS, with the user's own sign-ins, saved passwords and security warnings. The app can't read or script
+ *   the page.
+ * - `external`: leaves the app for the browser app.
+ * - `webview`: the plugin's own web view. Deprecated: for sites you work with, use `openWebWindow()` from
+ *   `@wefterjs/core`, which can also talk to the page; for other sites, use `inApp`.
+ */
+export type BrowserMode = "inApp" | "external" | "webview";
 
 /** What to open and how the in-app browser looks. `id` is echoed back in events. */
 export interface OpenOptions {
   url: string;
   mode?: BrowserMode;
   id?: string;
-  title?: string;
-  showToolbar?: boolean;
-  showNavigationButtons?: boolean;
+  /** `inApp`: the toolbar's colour, `#RRGGBB`. */
+  toolbarColor?: string;
+  /** `inApp` (Android) and `webview`: show a share button. */
   shareButton?: boolean;
+  /** `webview` only. */
+  title?: string;
+  /** `webview` only. */
+  showToolbar?: boolean;
+  /** `webview` only. */
+  showNavigationButtons?: boolean;
+  /** `webview` only. */
   desktopMode?: boolean;
 }
 
@@ -101,6 +117,21 @@ const native = definePlugin<{
 /** The Browser plugin. */
 export const Browser = {
   ...native,
+
+  /**
+   * Opens a URL, in the system browser's in-app view by default.
+   *
+   * @see BrowserMode
+   */
+  open(options: OpenOptions): Promise<OpenResult> {
+    if (options.mode === "webview") {
+      console.warn(
+        '[@wefterjs/browser] mode: "webview" is deprecated and will be removed. Use openWebWindow() from ' +
+          '@wefterjs/core for sites you work with, or the default mode ("inApp") for other sites.',
+      );
+    }
+    return native.open(options);
+  },
 
   /**
    * A redirect URI for {@link Browser.auth} on the app's own scheme, such as

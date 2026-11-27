@@ -1,6 +1,8 @@
 # @wefterjs/browser
 
-Official Wefter plugin for opening in-app web browsers using Android Custom Tabs and iOS SFSafariViewController, including OAuth authentication flows.
+Official Wefter plugin for opening web pages in the system browser's in-app view (Android Custom Tabs, iOS `SFSafariViewController`) or the browser app, and for OAuth sign-in flows.
+
+Use it for sites you don't control and for sign-in: the user's own sign-ins, saved passwords and security warnings work there, and the app can't read or script the page. For sites you own or work with that should talk to the app, use `openWebWindow()` from `@wefterjs/core` instead.
 
 ## Features
 
@@ -39,14 +41,19 @@ import { Browser } from "@wefterjs/browser";
 ```ts
 await Browser.open({
   url: "https://wefter.dev",
-  mode: "webview", // "webview" (in-app tab) or "external" (system browser)
-  title: "Documentation",
-  showToolbar: true,
-  showNavigationButtons: true,
-  shareButton: true,
-  desktopMode: false,
+  mode: "inApp", // the default; or "external" for the browser app
+  toolbarColor: "#0f766e",
+  shareButton: true, // Android
 });
 ```
+
+| Mode       | Opens                                                                                                                                                                           |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `inApp`    | Custom Tabs (Android) or `SFSafariViewController` (iOS). Android uses the browser app when no browser supports Custom Tabs. Only `http` and `https`.                            |
+| `external` | The browser app.                                                                                                                                                                |
+| `webview`  | **Deprecated.** The plugin's own web view, with `title`, `showToolbar`, `showNavigationButtons` and `desktopMode`. Logs a warning; use `openWebWindow()` from `@wefterjs/core`. |
+
+`browser:opened` and `browser:closed` follow. On Android, a Custom Tab counts as closed when the app comes back to the front.
 
 ### Close the active browser
 
@@ -106,12 +113,12 @@ closeSub.remove();
 
 ### Android
 
-- Uses `androidx.browser.customtabs.CustomTabsIntent` for in-app web views.
+- `inApp` uses `androidx.browser.customtabs.CustomTabsIntent`; `close()` brings the app's screen back to the front, which closes the tab.
 - OAuth flows route through `BrowserAuthActivity` to intercept redirect intent callbacks.
 
 ### iOS
 
-- Uses `SFSafariViewController` for standard web browsing.
+- `inApp` uses `SFSafariViewController`.
 - Uses `ASWebAuthenticationSession` when `Browser.auth` is called, ensuring secure token exchange and private session isolation when `ephemeral: true` is configured.
 
 ## License
